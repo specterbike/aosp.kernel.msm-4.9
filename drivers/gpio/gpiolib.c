@@ -2233,7 +2233,7 @@ int gpiod_direction_input(struct gpio_desc *desc)
 		gpiod_warn(desc,
 			"%s: missing get() or direction_input() operations\n",
 			__func__);
-		return -EIO;
+		//return -EIO;
 	}
 
 	status = chip->direction_input(chip, gpio_chip_hwgpio(desc));

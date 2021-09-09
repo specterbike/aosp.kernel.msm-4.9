@@ -215,6 +215,7 @@ struct msm_otg_platform_data {
 	bool enable_axi_prefetch;
 	bool vbus_low_as_hostmode;
 	bool phy_id_high_as_peripheral;
+	struct pinctrl *vbus_ctrl;
 };
 
 #define SDP_CHECK_DELAY_MS 10000 /* in ms */
@@ -286,8 +287,10 @@ static bool debug_bus_voting_enabled;
 static struct regulator *hsusb_3p3;
 static struct regulator *hsusb_1p8;
 static struct regulator *hsusb_vdd;
-static struct regulator *vbus_otg;
+//static struct regulator *vbus_otg;
 static struct power_supply *psy;
+static struct power_supply *bat_psy;
+static bool qm2150_otg_mode = false;
 
 static int vdd_val[VDD_VAL_MAX];
 static u32 bus_freqs[USB_NOC_NUM_VOTE][USB_NUM_BUS_CLOCKS]  /*bimc,snoc,pcnoc*/;
@@ -2069,6 +2072,7 @@ static void msm_otg_start_host(struct usb_otg *otg, int on)
 				PM_QOS_CPU_DMA_LATENCY, PM_QOS_DEFAULT_VALUE);
 		/* start in perf mode for better performance initially */
 		msm_otg_perf_vote_update(motg, true);
+		qm2150_otg_mode = true;
 		schedule_delayed_work(&motg->perf_vote_work,
 				msecs_to_jiffies(1000 * PM_QOS_SAMPLE_SEC));
 	} else {
@@ -2096,6 +2100,7 @@ static void msm_otg_start_host(struct usb_otg *otg, int on)
 		if (pdata->otg_control == OTG_PHY_CONTROL)
 			ulpi_write(otg->usb_phy, OTG_COMP_DISABLE,
 				ULPI_CLR(ULPI_PWR_CLK_MNG_REG));
+		qm2150_otg_mode = false;
 	}
 	msm_otg_dbg_log_event(&motg->phy, "PM RT: StartHost PUT",
 				     get_pm_runtime_counter(motg->phy.dev), 0);
@@ -2104,19 +2109,56 @@ static void msm_otg_start_host(struct usb_otg *otg, int on)
 	pm_runtime_put_autosuspend(otg->usb_phy->dev);
 }
 
+static int vbus_control(struct pinctrl *gpioctrl,bool active)
+{
+	struct pinctrl_state *set_state;
+	int retval;
+
+	if (active) {
+		set_state =
+			pinctrl_lookup_state(gpioctrl,"active");
+		if (IS_ERR(set_state)) {
+			pr_err("cannot get vbus pinctrl active state\n");
+			return PTR_ERR(set_state);
+		}
+	} else {
+		set_state =
+			pinctrl_lookup_state(gpioctrl,"sleep");
+		if (IS_ERR(set_state)) {
+			pr_err("cannot get vbus pinctrl sleep state\n");
+			return PTR_ERR(set_state);
+		}
+	}
+	retval = pinctrl_select_state(gpioctrl, set_state);
+	if (retval) {
+		printk("cannot set vbus pinctrl state,ret:%d\n",retval);
+		return retval;
+	}
+
+	return 0;
+}
+
 static void msm_hsusb_vbus_power(struct msm_otg *motg, bool on)
 {
-	int ret;
+//	int ret;
 	static bool vbus_is_on;
+	struct msm_otg_platform_data *pdata = motg->pdata;
+	union power_supply_propval pval = {0, };
 
 	msm_otg_dbg_log_event(&motg->phy, "VBUS POWER", on, vbus_is_on);
 	if (vbus_is_on == on)
 		return;
 
-	if (!vbus_otg) {
+	if (!bat_psy){
+		bat_psy = power_supply_get_by_name("battery");
+		if (!bat_psy)
+			dev_err(motg->phy.dev, "Could not get battery supply\n");
+	}
+
+	/*if (!vbus_otg) {
 		pr_err("vbus_otg is NULL.");
 		return;
-	}
+	}*/
 
 	/*
 	 * if entering host mode tell the charger to not draw any current
@@ -2125,20 +2167,47 @@ static void msm_hsusb_vbus_power(struct msm_otg *motg, bool on)
 	 * current from the source.
 	 */
 	if (on) {
-		ret = regulator_enable(vbus_otg);
+/*		ret = regulator_enable(vbus_otg);
 		if (ret) {
 			pr_err("unable to enable vbus_otg\n");
 			return;
-		}
+		}*/
+		vbus_control(pdata->vbus_ctrl,on);
 		vbus_is_on = true;
 	} else {
-		ret = regulator_disable(vbus_otg);
+/*		ret = regulator_disable(vbus_otg);
 		if (ret) {
 			pr_err("unable to disable vbus_otg\n");
 			return;
-		}
+		}*/
+		vbus_control(pdata->vbus_ctrl,on);
 		vbus_is_on = false;
 	}
+
+	if (bat_psy) {
+		dev_err(motg->phy.dev, "switch charging on/off:%d\n",on);
+		pval.intval = !on;
+		power_supply_set_property(bat_psy,POWER_SUPPLY_PROP_CHARGING_ENABLED, &pval);
+	}
+}
+
+void control_otg_charging(void)
+{
+	union power_supply_propval pval = {0, };
+
+	printk(KERN_ERR"adolf,%s-%d,qm2150_otg_mode:%d\n",__func__,__LINE__,qm2150_otg_mode);
+	if(qm2150_otg_mode){
+		if (!bat_psy){
+			bat_psy = power_supply_get_by_name("battery");
+			if (!bat_psy) {
+				printk(KERN_ERR"%s,can not get battery supply",__func__);
+				return;
+			}
+			pval.intval = 0;
+			power_supply_set_property(bat_psy,POWER_SUPPLY_PROP_CHARGING_ENABLED, &pval);
+		}
+	}
+
 }
 
 static int msm_otg_set_host(struct usb_otg *otg, struct usb_bus *host)
@@ -2156,14 +2225,14 @@ static int msm_otg_set_host(struct usb_otg *otg, struct usb_bus *host)
 	}
 
 	if (host) {
-		vbus_otg = devm_regulator_get(motg->phy.dev, "vbus_otg");
+/*		vbus_otg = devm_regulator_get(motg->phy.dev, "vbus_otg");
 		if (IS_ERR(vbus_otg)) {
 			msm_otg_dbg_log_event(&motg->phy,
 					"UNABLE TO GET VBUS_OTG",
 					otg->state, 0);
 			pr_err("Unable to get vbus_otg\n");
 			return PTR_ERR(vbus_otg);
-		}
+		}*/
 	} else {
 		if (otg->state == OTG_STATE_A_HOST) {
 			msm_otg_start_host(otg, 0);
@@ -3830,12 +3899,31 @@ struct msm_otg_platform_data *msm_otg_dt_to_pdata(struct platform_device *pdev)
 {
 	struct device_node *node = pdev->dev.of_node;
 	struct msm_otg_platform_data *pdata;
+	struct pinctrl_state *pinctrl_state;
+	int rc;
 	int len = 0;
 	int res_gpio;
 
 	pdata = devm_kzalloc(&pdev->dev, sizeof(*pdata), GFP_KERNEL);
 	if (!pdata)
 		return NULL;
+
+	pdata->vbus_ctrl = devm_pinctrl_get(&pdev->dev);
+	pinctrl_state = pinctrl_lookup_state(pdata->vbus_ctrl, "default");
+	rc = pinctrl_select_state(pdata->vbus_ctrl, pinctrl_state);
+	if (rc){
+		pr_err("%s:usbid selecting suspend state fail",__func__);
+	} else {
+		pr_err("%s:usbid selecting suspend state ok",__func__);
+	}
+
+	if (pdata->vbus_ctrl) {
+		rc = vbus_control(pdata->vbus_ctrl,false);
+		if (rc) {
+			pr_err("cannot set gpio-19 pinctrl active state\n");
+			//return rc;
+		}
+	}
 
 	len = of_property_count_elems_of_size(node,
 			"qcom,hsusb-otg-phy-init-seq", sizeof(len));

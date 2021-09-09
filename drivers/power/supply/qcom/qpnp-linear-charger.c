@@ -3317,6 +3317,7 @@ static int qpnp_lbc_parallel_probe(struct platform_device *pdev)
 	return 0;
 }
 
+extern void control_otg_charging(void);
 static int qpnp_lbc_main_probe(struct platform_device *pdev)
 {
 	ktime_t kt;
@@ -3532,6 +3533,7 @@ static int qpnp_lbc_main_probe(struct platform_device *pdev)
 			pr_err("Couldn't create lbc_config debug file\n");
 	}
 
+	control_otg_charging();
 	pr_debug("Probe chg_dis=%d bpd=%d usb=%d batt_pres=%d batt_volt=%d soc=%d\n",
 			chip->cfg_charging_disabled,
 			chip->cfg_bpd_detection,

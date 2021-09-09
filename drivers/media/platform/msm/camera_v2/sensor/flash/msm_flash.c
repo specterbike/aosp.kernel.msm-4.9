@@ -26,8 +26,23 @@
 
 DEFINE_MSM_MUTEX(msm_flash_mutex);
 
+struct class *gpio_torch_class;
+
+static int torch_flag;
+static struct msm_flash_ctrl_t *gpio_flash_ctrl = NULL;
+
 static struct v4l2_file_operations msm_flash_v4l2_subdev_fops;
 static struct led_trigger *torch_trigger;
+
+#define GPIO_HIGH  1
+#define GPIO_LOW   0
+
+struct led_gpio_flash_data {
+    int flash_enf;
+    int flash_enm;
+};
+
+struct led_gpio_flash_data *flash_led = NULL;
 
 static const struct of_device_id msm_flash_dt_match[] = {
 	{.compatible = "qcom,camera-flash", .data = NULL},
@@ -356,30 +371,13 @@ static int32_t msm_flash_gpio_init(
 	struct msm_flash_ctrl_t *flash_ctrl,
 	struct msm_flash_cfg_data_t *flash_data)
 {
-	int32_t i = 0;
 	int32_t rc = 0;
 
 	CDBG("Enter");
-	for (i = 0; i < flash_ctrl->flash_num_sources; i++)
-		flash_ctrl->flash_op_current[i] = LED_FULL;
-
-	for (i = 0; i < flash_ctrl->torch_num_sources; i++)
-		flash_ctrl->torch_op_current[i] = LED_HALF;
-
-	for (i = 0; i < flash_ctrl->torch_num_sources; i++) {
-		if (!flash_ctrl->torch_trigger[i]) {
-			if (i < flash_ctrl->flash_num_sources)
-				flash_ctrl->torch_trigger[i] =
-					flash_ctrl->flash_trigger[i];
-			else
-				flash_ctrl->torch_trigger[i] =
-					flash_ctrl->flash_trigger[
-					flash_ctrl->flash_num_sources - 1];
-		}
-	}
-
+	gpio_flash_ctrl = flash_ctrl;
 	rc = flash_ctrl->func_tbl->camera_flash_off(flash_ctrl, flash_data);
 
+	flash_ctrl->flash_state = MSM_CAMERA_FLASH_INIT;
 	CDBG("Exit");
 	return rc;
 }
@@ -426,6 +424,63 @@ static int32_t msm_flash_off(struct msm_flash_ctrl_t *flash_ctrl,
 		led_trigger_event(flash_ctrl->switch_trigger, 0);
 
 	CDBG("Exit\n");
+	return 0;
+}
+
+
+static int32_t msm_flash_gpio_off(struct msm_flash_ctrl_t *flash_ctrl,
+	struct msm_flash_cfg_data_t *flash_data)
+{
+	int32_t rc = 0;
+	pr_err("%s,Enter\n",__func__);
+
+	rc = gpio_direction_output(flash_led->flash_enf, GPIO_LOW);
+	rc = gpio_direction_output(flash_led->flash_enm, GPIO_LOW);
+
+	flash_ctrl->flash_state = MSM_CAMERA_FLASH_OFF;
+	CDBG("Exit\n");
+	return rc;
+}
+
+static int32_t msm_flash_gpio_high(
+	struct msm_flash_ctrl_t *flash_ctrl,
+	struct msm_flash_cfg_data_t *flash_data)
+{
+	int rc;
+	pr_err("%s,Enter\n",__func__);
+	rc = gpio_direction_output(flash_led->flash_enm, GPIO_HIGH);
+	rc = gpio_direction_output(flash_led->flash_enf, GPIO_LOW);
+	mdelay(1);
+	rc = gpio_direction_output(flash_led->flash_enf, GPIO_HIGH);
+	return 0;
+}
+
+static int32_t msm_flash_gpio_low(
+	struct msm_flash_ctrl_t *flash_ctrl,
+	struct msm_flash_cfg_data_t *flash_data)
+{
+	int rc;
+	pr_err("%s,Enter\n",__func__);
+
+	rc = gpio_direction_output(flash_led->flash_enf, GPIO_LOW);
+	rc = gpio_direction_output(flash_led->flash_enm, GPIO_HIGH);
+	mdelay(6);
+
+	return rc;
+}
+
+static int32_t msm_flash_gpio_release(
+	struct msm_flash_ctrl_t *flash_ctrl)
+{
+	int32_t rc = 0;
+
+	rc = flash_ctrl->func_tbl->camera_flash_off(flash_ctrl, NULL);
+	if (rc < 0) {
+		pr_err("%s:%d camera_flash_init failed rc = %d",
+			__func__, __LINE__, rc);
+		return rc;
+	}
+	flash_ctrl->flash_state = MSM_CAMERA_FLASH_RELEASE;
 	return 0;
 }
 
@@ -516,8 +571,6 @@ static int32_t msm_flash_init(
 			__func__, __LINE__,
 			flash_data->cfg.flash_init_info->flash_driver_type);
 	}
-	if (flash_ctrl->platform_flash_init)
-		flash_ctrl->platform_flash_init(flash_ctrl, flash_data);
 
 	if (flash_ctrl->func_tbl->camera_flash_init) {
 		rc = flash_ctrl->func_tbl->camera_flash_init(
@@ -543,7 +596,11 @@ static int32_t msm_flash_init_prepare(
 	struct msm_flash_cfg_data_t flash_data_k;
 	struct msm_flash_init_info_t flash_init_info;
 	int32_t i = 0;
-
+	int32_t ret = 0;
+	if(FLASH_DRIVER_GPIO == flash_ctrl->flash_driver_type) {
+		pr_err("%s: gpio flash, return \n",__func__);
+		return ret;
+	}
 	if (!is_compat_task()) {
 		/*for 64-bit usecase,it need copy the data to local memory*/
 		flash_data_k.cfg_type = flash_data->cfg_type;
@@ -600,12 +657,13 @@ static int32_t msm_flash_prepare(
 {
 	int32_t ret = 0;
 
-	CDBG("%s:%d: State : %d\n",
-		__func__, __LINE__, flash_ctrl->flash_state);
+	CDBG("%s:%d: State : %d flash type:%d\n",
+		__func__, __LINE__, flash_ctrl->flash_state, flash_ctrl->flash_driver_type);
+
+	if(FLASH_DRIVER_GPIO == flash_ctrl->flash_driver_type)
+		return ret;
 
 	if (flash_ctrl->switch_trigger == NULL) {
-		if (flash_ctrl->platform_flash_init)
-			return ret;
 		pr_err("%s:%d Invalid argument\n",
 				__func__, __LINE__);
 		return -EINVAL;
@@ -1123,7 +1181,7 @@ static int32_t msm_flash_get_dt_data(struct device_node *of_node,
 	struct msm_flash_ctrl_t *fctrl)
 {
 	int32_t rc = 0;
-
+	int32_t flash_type = 0;
 	CDBG("called\n");
 
 	if (!of_node) {
@@ -1155,27 +1213,79 @@ static int32_t msm_flash_get_dt_data(struct device_node *of_node,
 		fctrl->flash_driver_type = FLASH_DRIVER_I2C;
 	}
 
-	/* Read the flash and torch source info from device tree node */
-	rc = msm_flash_get_pmic_source_info(of_node, fctrl);
+	rc = of_property_read_u32(of_node, "qcom,flash-type", &flash_type);
 	if (rc < 0) {
-		pr_err("%s:%d msm_flash_get_pmic_source_info failed rc %d\n",
+		pr_err("%s:%d get flash type failed rc %d\n",
 			__func__, __LINE__, rc);
-		return rc;
+	}else{
+		if(flash_type == FLASH_DRIVER_GPIO)
+			fctrl->flash_driver_type = FLASH_DRIVER_GPIO;
+	}
+	/* Read the flash and torch source info from device tree node */
+	if(flash_type == FLASH_DRIVER_PMIC) {
+		rc = msm_flash_get_pmic_source_info(of_node, fctrl);
+		if (rc < 0) {
+			pr_err("%s:%d msm_flash_get_pmic_source_info failed rc %d\n",
+				__func__, __LINE__, rc);
+			return rc;
+		}
+
+		/* Read the gpio information from device tree */
+		/* Read the gpio information from device tree */
+		rc = msm_sensor_driver_get_gpio_data(
+			&(fctrl->power_info.gpio_conf), of_node);
+		if (rc < 0) {
+			pr_err("%s:%d msm_sensor_driver_get_gpio_data failed rc %d\n",
+				__func__, __LINE__, rc);
+			return rc;
+		}
 	}
 
-	/* Read the gpio information from device tree */
-	rc = msm_sensor_driver_get_gpio_data(
-		&(fctrl->power_info.gpio_conf), of_node);
-	if (rc < 0) {
-		pr_err("%s:%d msm_sensor_driver_get_gpio_data failed rc %d\n",
-			__func__, __LINE__, rc);
-		return rc;
+	if(flash_type == FLASH_DRIVER_GPIO) {
+		flash_led = kzalloc(sizeof(struct led_gpio_flash_data), GFP_KERNEL);
+		flash_led->flash_enf = of_get_named_gpio(of_node, "qcom,flash-enf", 0);
+		if (flash_led->flash_enf < 0) {
+			pr_err("%s:%d get flash_led->flash_enf  failed rc %d\n",
+					__func__, __LINE__,rc);
+			goto error;
+		} else {
+			rc = gpio_request(flash_led->flash_enf, "FLASH_ENF");
+			if (rc) {
+				pr_err("%s:%d gpio %d failed rc %d\n",
+					__func__, __LINE__, flash_led->flash_enf,rc);
+				//goto error;
+			}
+			pr_err("%s:%d request gpio %d  succeed rc %d\n",
+					__func__, __LINE__,flash_led->flash_enf, rc);
+		}
+
+		flash_led->flash_enm = of_get_named_gpio(of_node, "qcom,flash-enm", 0);
+		if (flash_led->flash_enm < 0) {
+			pr_err("%s:%d get flash_led->flash_enm  failed rc %d\n",
+					__func__, __LINE__,rc);
+
+			goto error;
+		} else {
+			rc = gpio_request(flash_led->flash_enm, "FLASH_ENM");
+			if (rc) {
+				pr_err("%s:%d request gpio %d  failed rc %d\n",
+					__func__, __LINE__,flash_led->flash_enm, rc);
+				//goto error;
+			}
+			pr_err("%s:%d request gpio %d  succeed rc %d\n",
+					__func__, __LINE__,flash_led->flash_enm, rc);
+		}
 	}
 
 	if (fctrl->flash_driver_type == FLASH_DRIVER_DEFAULT)
 		fctrl->flash_driver_type = FLASH_DRIVER_GPIO;
 	CDBG("%s:%d fctrl->flash_driver_type = %d", __func__, __LINE__,
 		fctrl->flash_driver_type);
+
+	return rc;
+
+error:
+	kfree(flash_led);
 
 	return rc;
 }
@@ -1265,6 +1375,40 @@ static long msm_flash_subdev_fops_ioctl(struct file *file,
 	return video_usercopy(file, cmd, arg, msm_flash_subdev_do_ioctl);
 }
 #endif
+
+static ssize_t gpio_torch_show_class(struct class *class,
+        struct class_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n",torch_flag);
+}
+
+static ssize_t gpio_torch_store_class(struct class *class,
+        struct class_attribute *attr, const char *buf,size_t count)
+{
+	int32_t rc = 0;
+
+	if (buf[0] == '0') {
+		pr_err("gpio torch close\n");
+		rc = msm_flash_gpio_off(gpio_flash_ctrl, NULL);
+	} else if (buf[0] == '1') {
+		pr_err("gpio torch open\n");
+		rc = msm_flash_gpio_low(gpio_flash_ctrl, NULL);
+	} else {
+		pr_err("error commond\n");
+	}
+
+	return count;
+}
+
+static struct class_attribute gpio_torch_class_attr = {
+        .attr = {
+                .name = "gpio_torch_clsdev",
+                .mode = S_IRWXU|S_IRWXG|S_IRWXO,
+        },
+        .show = gpio_torch_show_class,
+        .store = gpio_torch_store_class,
+};
+
 static int32_t msm_flash_platform_probe(struct platform_device *pdev)
 {
 	int32_t rc = 0;
@@ -1292,8 +1436,6 @@ static int32_t msm_flash_platform_probe(struct platform_device *pdev)
 		kfree(flash_ctrl);
 		return -EINVAL;
 	}
-	if (flash_ctrl->flash_driver_type == FLASH_DRIVER_GPIO)
-		platform_set_drvdata(pdev, flash_ctrl);
 
 	flash_ctrl->flash_state = MSM_CAMERA_FLASH_RELEASE;
 	flash_ctrl->power_info.dev = &flash_ctrl->pdev->dev;
@@ -1338,13 +1480,13 @@ static int32_t msm_flash_platform_probe(struct platform_device *pdev)
 	if (flash_ctrl->flash_driver_type == FLASH_DRIVER_PMIC)
 		rc = msm_torch_create_classdev(pdev, flash_ctrl);
 
+	if (flash_ctrl->flash_driver_type == FLASH_DRIVER_GPIO) {
+		gpio_torch_class = class_create(THIS_MODULE, "gpio_torch");
+		rc = class_create_file(gpio_torch_class, &gpio_torch_class_attr);
+	}
+
 	CDBG("probe success\n");
 	return rc;
-}
-
-int32_t camera_flash_platform_probe(struct platform_device *pdev)
-{
-	return msm_flash_platform_probe(pdev);
 }
 
 MODULE_DEVICE_TABLE(of, msm_flash_dt_match);
@@ -1391,10 +1533,10 @@ static struct msm_flash_table msm_gpio_flash_table = {
 	.flash_driver_type = FLASH_DRIVER_GPIO,
 	.func_tbl = {
 		.camera_flash_init = msm_flash_gpio_init,
-		.camera_flash_release = msm_flash_release,
-		.camera_flash_off = msm_flash_off,
-		.camera_flash_low = msm_flash_low,
-		.camera_flash_high = msm_flash_high,
+		.camera_flash_release = msm_flash_gpio_release,
+		.camera_flash_off = msm_flash_gpio_off,
+		.camera_flash_low = msm_flash_gpio_low,
+		.camera_flash_high = msm_flash_gpio_high,
 		.camera_flash_query_current = NULL,
 	},
 };

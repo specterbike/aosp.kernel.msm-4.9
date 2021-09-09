@@ -139,6 +139,15 @@
 	};
 };
 
+&pm8916_mpps {
+	mpp2_adc_default: mpp2_adc_default {
+		pins = "mpp2";
+		function = "analog";
+		input-enable;
+		qcom,amux-route = <1>;
+	};
+};
+
 &pm8916_gpios {
 	disp_vdda_en_default: disp_vdda_en_default {
 		pins = "gpio3";
@@ -146,6 +155,14 @@
 		power-source = <0>;
 		drive-strength = <8>;
 		output-high;
+	};
+
+	usb_id_default: usb_id_default {
+		pins = "gpio4";
+		function = "normal";
+		power-source = <3>;
+		input-enable;
+		bias-pull-up;
 	};
 };
 
@@ -177,6 +194,7 @@
 &mdss_dsi {
 	vdda-supply = <&pm8916_l6>;
 	vddio-supply = <&pm8916_l6>;
+	vdd-supply = <&pm8916_l17>;
 
 	qcom,phy-supply-entries {
 		#address-cells = <1>;
@@ -187,6 +205,14 @@
 			qcom,supply-name = "vddio";
 			qcom,supply-min-voltage = <1744000>;
 			qcom,supply-max-voltage = <1904000>;
+			qcom,supply-enable-load = <100000>;
+			qcom,supply-disable-load = <100>;
+		};
+			qcom,phy-supply-entry@1 {
+			reg = <1>;
+			qcom,supply-name = "vdd";
+			qcom,supply-min-voltage = <3000000>;
+			qcom,supply-max-voltage = <3000000>;
 			qcom,supply-enable-load = <100000>;
 			qcom,supply-disable-load = <100>;
 		};
@@ -218,6 +244,8 @@
 };
 
 &pm8916_vadc {
+    pinctrl-names = "default";
+	pinctrl-0 = <&mpp2_adc_default>;
 	chan@0 {
 		label = "usb_in";
 		reg = <0>;
@@ -285,6 +313,17 @@
 	};
 
 	chan@11 {
+		label = "mpp2_adc";
+		reg = <0x11>; // channel for MPP2
+		qcom,decimation = <0>;
+		qcom,pre-div-channel-scaling = <0>; //Use 1:1 scaling to keep input voltage with in Max voltage: 1.8V
+		qcom,calibration-type = "absolute";
+		qcom,scale-function = <0>;
+		qcom,hw-settle-time = <1>;
+		qcom,fast-avg-setup = <2>;
+	};
+
+	/*chan@11 {
 		label = "skin_therm";
 		reg = <0x11>;
 		qcom,decimation = <0>;
@@ -294,7 +333,7 @@
 		qcom,hw-settle-time = <2>;
 		qcom,fast-avg-setup = <0>;
 		qcom,vadc-thermal-node;
-	};
+	};*/
 
 	chan@30 {
 		label = "batt_therm";
@@ -493,4 +532,9 @@
 	HSUSB_1p8-supply = <&pm8916_l7>;
 	HSUSB_3p3-supply = <&pm8916_l13>;
 	extcon = <&pm8916_chg>;
+	qcom,usbid-gpio = <&pm8916_gpios 4 1>;
+	pinctrl-names = "active","sleep","default";
+	pinctrl-0 = <&vbus_enable>;
+	pinctrl-1 = <&vbus_disable>;
+	pinctrl-2 = <&usb_id_default>;
 };
