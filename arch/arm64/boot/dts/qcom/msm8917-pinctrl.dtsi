@@ -1507,7 +1507,7 @@
 		tlmm_gpio_key {
 			gpio_key_active: gpio_key_active {
 				mux {
-					pins = "gpio50", "gpio91", "gpio127", "gpio128";
+					pins = "gpio50", "gpio91", "gpio127", "gpio128", "gpio12", "gpio34", "gpio46", "gpio93";
 					drive-strength = <2>;
 					bias-pull-up;
 				};
@@ -1515,7 +1515,7 @@
 
 			gpio_key_suspend: gpio_key_suspend {
 				mux {
-					pins = "gpio50", "gpio91", "gpio127", "gpio128";
+					pins = "gpio50", "gpio91", "gpio127", "gpio128", "gpio12", "gpio34", "gpio46", "gpio93";
 					drive-strength = <2>;
 					bias-pull-up;
 				};

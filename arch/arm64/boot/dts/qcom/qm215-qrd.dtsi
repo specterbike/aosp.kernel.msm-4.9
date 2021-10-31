@@ -200,12 +200,12 @@
 
 &mdss_dsi_active {
 	mux {
-		pins = "gpio60", "gpio93";//, "gpio94"
+		pins = "gpio60"; // "gpio93", "gpio94"
 		function = "gpio";
 	};
 
 	config {
-		pins = "gpio60", "gpio93";//, "gpio94"
+		pins = "gpio60"; // "gpio93", "gpio94"
 		drive-strength = <8>; /* 8 mA */
 		bias-disable = <0>; /* no pull */
 		output-high;
@@ -214,12 +214,12 @@
 
 &mdss_dsi_suspend {
 	mux {
-		pins = "gpio60", "gpio93";//, "gpio94"
+		pins = "gpio60"; // "gpio93", "gpio94"
 		function = "gpio";
 	};
 
 	config {
-		pins = "gpio60", "gpio93";//, "gpio94"
+		pins = "gpio60"; // "gpio93", "gpio94"
 		drive-strength = <2>; /* 2 mA */
 		bias-pull-down; /* pull down */
 	};
