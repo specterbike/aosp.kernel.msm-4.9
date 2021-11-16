@@ -46,13 +46,16 @@
 				qcom,s2-type = <4>;
 				linux,code = <116>;
 			};
-/*
+
 			qcom,pon_2 {
 				qcom,pon-type = <1>;
+				qcom,support-reset = <1>;
 				qcom,pull-up = <1>;
-				linux,code = <114>;
+				qcom,s1-timer = <6720>;
+				qcom,s2-timer = <1000>;
+				qcom,s2-type = <4>;
+				linux,code = <113>;
 			};
-*/
 		};
 
 		pm8916_gpios: pinctrl@c000 {
