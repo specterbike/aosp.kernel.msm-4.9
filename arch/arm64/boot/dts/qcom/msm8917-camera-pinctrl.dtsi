@@ -153,32 +153,32 @@ cam_sensor_rear_sleep: cam_sensor_rear_sleep {
 
 cam_sensor_rear_vdig_qm215: cam_sensor_rear_vdig_qm215 {
 	/* VDIG */
-	mux {
-		pins = "gpio94";
-		function = "gpio";
-	};
+	// mux {
+	// 	pins = "gpio94";
+	// 	function = "gpio";
+	// };
 
-	config {
-		pins = "gpio94";
-		//output-high;
-		output-low;
-		drive-strength = <2>; /* 2 MA */
-	};
+	// config {
+	// 	pins = "gpio94";
+	// 	//output-high;
+	// 	output-low;
+	// 	drive-strength = <2>; /* 2 MA */
+	// };
 };
 
 cam_sensor_rear_vdig_sleep_qm215: cam_sensor_rear_vdig_sleep_qm215 {
 	/* VDIG */
-	mux {
-		pins = "gpio94";
-		function = "gpio";
-	};
+	// mux {
+	// 	pins = "gpio94";
+	// 	function = "gpio";
+	// };
 
-	config {
-		pins = "gpio94";
-		//output-low;
-		bias-disable; /* No PULL */
-		drive-strength = <2>; /* 2 MA */
-	};
+	// config {
+	// 	pins = "gpio94";
+	// 	//output-low;
+	// 	bias-disable; /* No PULL */
+	// 	drive-strength = <2>; /* 2 MA */
+	// };
 };
 
 /*Depth Camera*/
