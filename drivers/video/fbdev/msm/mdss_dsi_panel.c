@@ -93,17 +93,18 @@ static void mdss_dsi_panel_bklt_pwm(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 		return;
 	}
 
-	duty = level * ctrl->pwm_period;
-	duty /= ctrl->bklt_max;
-
-	pr_debug("%s: bklt_ctrl=%d pwm_period=%d pwm_gpio=%d pwm_lpg_chan=%d\n",
+	pr_info("%s: bklt_ctrl=%d pwm_period=%d pwm_gpio=%d pwm_lpg_chan=%d\n",
 			__func__, ctrl->bklt_ctrl, ctrl->pwm_period,
 				ctrl->pwm_pmic_gpio, ctrl->pwm_lpg_chan);
 
-	pr_debug("%s: ndx=%d level=%d duty=%d\n", __func__,
-					ctrl->ndx, level, duty);
-
 	if (ctrl->pwm_period >= USEC_PER_SEC) {
+
+		duty = level * ctrl->pwm_period;
+		duty /= ctrl->bklt_max;
+
+		pr_info("%s: usec ndx=%d level=%d duty=%d\n", __func__,
+						ctrl->ndx, level, duty);
+
 		ret = pwm_config_us(ctrl->pwm_bl, duty, ctrl->pwm_period);
 		if (ret) {
 			pr_err("%s: pwm_config_us() failed err=%d.\n",
@@ -111,10 +112,14 @@ static void mdss_dsi_panel_bklt_pwm(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 			return;
 		}
 	} else {
+
 		period_ns = ctrl->pwm_period * NSEC_PER_USEC;
-		ret = pwm_config(ctrl->pwm_bl,
-				level * period_ns / ctrl->bklt_max,
-				period_ns);
+		duty = level * period_ns / ctrl->bklt_max;
+
+		pr_info("%s: nsec ndx=%d level=%d duty=%d period_ns=%d\n", __func__,
+						ctrl->ndx, level, duty, period_ns);
+
+		ret = pwm_config(ctrl->pwm_bl, duty, period_ns);
 		if (ret) {
 			pr_err("%s: pwm_config() failed err=%d.\n",
 					__func__, ret);
