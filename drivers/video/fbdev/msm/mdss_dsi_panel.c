@@ -114,7 +114,8 @@ static void mdss_dsi_panel_bklt_pwm(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 	} else {
 
 		period_ns = ctrl->pwm_period * NSEC_PER_USEC;
-		duty = level * period_ns / ctrl->bklt_max;
+		// Divide by bklt_max first to avoid 32 bit integer overflow
+		duty = (period_ns / ctrl->bklt_max) * level;
 
 		pr_info("%s: nsec ndx=%d level=%d duty=%d period_ns=%d\n", __func__,
 						ctrl->ndx, level, duty, period_ns);
