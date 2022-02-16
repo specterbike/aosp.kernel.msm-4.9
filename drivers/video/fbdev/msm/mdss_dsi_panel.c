@@ -93,7 +93,7 @@ static void mdss_dsi_panel_bklt_pwm(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 		return;
 	}
 
-	pr_info("%s: bklt_ctrl=%d pwm_period=%d pwm_gpio=%d pwm_lpg_chan=%d\n",
+	pr_debug("%s: bklt_ctrl=%d pwm_period=%d pwm_gpio=%d pwm_lpg_chan=%d\n",
 			__func__, ctrl->bklt_ctrl, ctrl->pwm_period,
 				ctrl->pwm_pmic_gpio, ctrl->pwm_lpg_chan);
 
@@ -102,7 +102,7 @@ static void mdss_dsi_panel_bklt_pwm(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 		duty = level * ctrl->pwm_period;
 		duty /= ctrl->bklt_max;
 
-		pr_info("%s: usec ndx=%d level=%d duty=%d\n", __func__,
+		pr_debug("%s: usec ndx=%d level=%d duty=%d\n", __func__,
 						ctrl->ndx, level, duty);
 
 		ret = pwm_config_us(ctrl->pwm_bl, duty, ctrl->pwm_period);
@@ -117,7 +117,7 @@ static void mdss_dsi_panel_bklt_pwm(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 		// Divide by bklt_max first to avoid 32 bit integer overflow
 		duty = (period_ns / ctrl->bklt_max) * level;
 
-		pr_info("%s: nsec ndx=%d level=%d duty=%d period_ns=%d\n", __func__,
+		pr_debug("%s: nsec ndx=%d level=%d duty=%d period_ns=%d\n", __func__,
 						ctrl->ndx, level, duty, period_ns);
 
 		ret = pwm_config(ctrl->pwm_bl, duty, period_ns);
