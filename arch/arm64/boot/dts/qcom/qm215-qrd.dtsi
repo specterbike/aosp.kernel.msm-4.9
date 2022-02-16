@@ -163,7 +163,7 @@
 
 	gt911: touchscreen@5d {
 		status = "ok";
-		compatible = "goodix,gt911";
+		compatible = "goodix,gt1151";
 		reg = <0x5d>;
 		interrupt-parent = <&tlmm>;
 		interrupts = <65 0x2>;
