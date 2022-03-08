@@ -171,7 +171,7 @@
 		pinctrl-0 = <&ts_int_active &ts_reset_active>;
 		irq-gpios = <&tlmm 65 0x02008>;
 		reset-gpios = <&tlmm 64 0x0>;
-		touchscreen-swapped-x-y;
+		// touchscreen-swapped-x-y;
 	};
 
 	goodix_ts@14 {
