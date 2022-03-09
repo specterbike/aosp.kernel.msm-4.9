@@ -594,6 +594,7 @@ static void goodix_read_config(struct goodix_ts_data *ts)
 			swap(ts->abs_x_max, ts->abs_y_max);
 		ts->max_touch_num = GOODIX_MAX_CONTACTS;
 	}
+	dev_info(&ts->client->dev, "MAX X: %d MAX Y: %d\n", ts->abs_x_max, ts->abs_y_max);
 
 	if (dmi_check_system(rotated_screen)) {
 		ts->inverted_x = true;
