@@ -344,11 +344,6 @@ static irqreturn_t goodix_ts_irq_handler(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static void goodix_free_irq(struct goodix_ts_data *ts)
-{
-	devm_free_irq(&ts->client->dev, ts->client->irq, ts);
-}
-
 static int goodix_request_irq(struct goodix_ts_data *ts)
 {
 	return devm_request_threaded_irq(&ts->client->dev, ts->client->irq,
@@ -452,23 +447,6 @@ static int goodix_send_cfg(struct goodix_ts_data *ts,
 	return 0;
 }
 
-static int goodix_int_sync(struct goodix_ts_data *ts)
-{
-	int error;
-
-	error = gpiod_direction_output(ts->gpiod_int, 0);
-	if (error)
-		return error;
-
-	msleep(50);				/* T5: 50ms */
-
-	error = gpiod_direction_input(ts->gpiod_int);
-	if (error)
-		return error;
-
-	return 0;
-}
-
 /**
  * goodix_reset - Reset device during power on
  *
@@ -483,29 +461,14 @@ static int goodix_reset(struct goodix_ts_data *ts)
 	if (error)
 		return error;
 
-	msleep(20);				/* T2: > 10ms */
-
-	/* HIGH: 0x28/0x29, LOW: 0xBA/0xBB */
-	error = gpiod_direction_output(ts->gpiod_int, ts->client->addr == 0x14);
-	if (error)
-		return error;
-
-	usleep_range(100, 2000);		/* T3: > 100us */
+	msleep(20);				/* T5: > 10ms */
 
 	error = gpiod_direction_output(ts->gpiod_rst, 1);
 	if (error)
 		return error;
 
-	usleep_range(6000, 10000);		/* T4: > 5ms */
-
-	/* end select I2C slave addr */
-	error = gpiod_direction_input(ts->gpiod_rst);
-	if (error)
-		return error;
-
-	error = goodix_int_sync(ts);
-	if (error)
-		return error;
+	// The interval between command delivery and reset must be longer than 58ms.
+	msleep(100);
 
 	return 0;
 }
@@ -866,24 +829,10 @@ static int __maybe_unused goodix_suspend(struct device *dev)
 
 	wait_for_completion(&ts->firmware_loading_complete);
 
-	/* Free IRQ as IRQ pin is used as output in the suspend sequence */
-	goodix_free_irq(ts);
-
-	/* Output LOW on the INT pin for 5 ms */
-	error = gpiod_direction_output(ts->gpiod_int, 0);
-	if (error) {
-		goodix_request_irq(ts);
-		return error;
-	}
-
-	usleep_range(5000, 6000);
-
 	error = goodix_i2c_write_u8(ts->client, GOODIX_REG_COMMAND,
 				    GOODIX_CMD_SCREEN_OFF);
 	if (error) {
 		dev_err(&ts->client->dev, "Screen off command failed\n");
-		gpiod_direction_input(ts->gpiod_int);
-		goodix_request_irq(ts);
 		return -EAGAIN;
 	}
 
@@ -907,23 +856,12 @@ static int __maybe_unused goodix_resume(struct device *dev)
 		return 0;
 	}
 
-	/*
-	 * Exit sleep mode by outputting HIGH level to INT pin
-	 * for 2ms~5ms.
-	 */
-	error = gpiod_direction_output(ts->gpiod_int, 1);
-	if (error)
+	// Exit sleep mode by issuing a reset
+	error = goodix_reset(ts);
+	if (error) {
+		dev_err(&client->dev, "Controller reset failed.\n");
 		return error;
-
-	usleep_range(2000, 5000);
-
-	error = goodix_int_sync(ts);
-	if (error)
-		return error;
-
-	error = goodix_request_irq(ts);
-	if (error)
-		return error;
+	}
 
 	return 0;
 }
