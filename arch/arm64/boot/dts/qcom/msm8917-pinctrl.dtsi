@@ -34,8 +34,9 @@
 
 				config {
 					pins = "gpio65";
-					drive-strength = <8>;
+					drive-strength = <10>;
 					bias-pull-up;
+					input-enable;
 				};
 			};
 		};
@@ -50,7 +51,7 @@
 				config {
 					pins = "gpio65";
 					drive-strength = <2>;
-					bias-pull-down;
+					bias-pull-up;
 				};
 			};
 		};

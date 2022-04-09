@@ -50,7 +50,6 @@ struct goodix_ts_data {
 	bool inverted_y;
 	unsigned int max_touch_num;
 	unsigned int int_trigger_type;
-	struct gpio_desc *gpiod_int;
 	struct gpio_desc *gpiod_rst;
 	u16 id;
 	u16 version;
@@ -488,18 +487,6 @@ static int goodix_get_gpio_config(struct goodix_ts_data *ts)
 		return -EINVAL;
 	dev = &ts->client->dev;
 
-	/* Get the interrupt GPIO pin number */
-	gpiod = devm_gpiod_get_optional(dev, GOODIX_GPIO_INT_NAME, GPIOD_IN);
-	if (IS_ERR(gpiod)) {
-		error = PTR_ERR(gpiod);
-		if (error != -EPROBE_DEFER)
-			dev_dbg(dev, "Failed to get %s GPIO: %d\n",
-				GOODIX_GPIO_INT_NAME, error);
-		return error;
-	}
-
-	ts->gpiod_int = gpiod;
-
 	/* Get the reset line GPIO pin number */
 	gpiod = devm_gpiod_get_optional(dev, GOODIX_GPIO_RST_NAME, GPIOD_IN);
 	if (IS_ERR(gpiod)) {
@@ -755,7 +742,7 @@ static int goodix_ts_probe(struct i2c_client *client,
 	if (error)
 		return error;
 
-	if (ts->gpiod_int && ts->gpiod_rst) {
+	if (ts->gpiod_rst) {
 		/* reset the controller */
 		error = goodix_reset(ts);
 		if (error) {
@@ -778,7 +765,7 @@ static int goodix_ts_probe(struct i2c_client *client,
 
 	ts->chip = goodix_get_chip_data(ts->id);
 
-	if (ts->gpiod_int && ts->gpiod_rst) {
+	if (ts->gpiod_rst) {
 		/* update device config */
 		ts->cfg_name = devm_kasprintf(&client->dev, GFP_KERNEL,
 					      "goodix_%d_cfg.bin", ts->id);
@@ -809,7 +796,7 @@ static int goodix_ts_remove(struct i2c_client *client)
 {
 	struct goodix_ts_data *ts = i2c_get_clientdata(client);
 
-	if (ts->gpiod_int && ts->gpiod_rst)
+	if (ts->gpiod_rst)
 		wait_for_completion(&ts->firmware_loading_complete);
 
 	return 0;
@@ -822,7 +809,7 @@ static int __maybe_unused goodix_suspend(struct device *dev)
 	int error;
 
 	/* We need gpio pins to suspend/resume */
-	if (!ts->gpiod_int || !ts->gpiod_rst) {
+	if (!ts->gpiod_rst) {
 		disable_irq(client->irq);
 		return 0;
 	}
@@ -851,7 +838,7 @@ static int __maybe_unused goodix_resume(struct device *dev)
 	struct goodix_ts_data *ts = i2c_get_clientdata(client);
 	int error;
 
-	if (!ts->gpiod_int || !ts->gpiod_rst) {
+	if (!ts->gpiod_rst) {
 		enable_irq(client->irq);
 		return 0;
 	}
