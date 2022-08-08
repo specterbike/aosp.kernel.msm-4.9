@@ -291,6 +291,9 @@ static void goodix_ts_report_touch(struct goodix_ts_data *ts, u8 *coor_data)
 	if (ts->swapped_x_y)
 		swap(input_x, input_y);
 
+	// Horrible hack to make the touch more correct
+	input_y = input_y * 1000 / 1055;
+
 	input_mt_slot(ts->input_dev, id);
 	input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, true);
 	input_report_abs(ts->input_dev, ABS_MT_POSITION_X, input_x);
