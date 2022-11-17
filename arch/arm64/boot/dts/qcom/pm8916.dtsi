@@ -185,6 +185,7 @@
 			#address-cells = <1>;
 			#size-cells = <1>;
 
+			qcom,charging-disabled;
 			qcom,vddmax-mv = <4200>;
 			qcom,vddsafe-mv = <4200>;
 			qcom,vinmin-mv = <4308>;
