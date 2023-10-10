@@ -29,6 +29,7 @@
 };
 
 
+#include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/clock/msm-clocks-8952.h>
 #include "qm215-camera-sensor-qrd.dtsi"
 
@@ -161,8 +162,17 @@
 &i2c_3 { /* BLSP3 QUP1 (NFC) */
 	status = "ok";
 
-	gt911: touchscreen@14 {
+	ili2130@41 {
 		status = "ok";
+		compatible = "ilitek,ili2130";
+		reg = <0x41>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <65 0x2>;
+		reset-gpios = <&tlmm 64 GPIO_ACTIVE_LOW>;
+	};
+
+	gt911: touchscreen@14 {
+		status = "disabled";
 		compatible = "goodix,gt1151";
 		reg = <0x14>;
 		interrupt-parent = <&tlmm>;
